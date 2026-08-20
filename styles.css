@@ -415,23 +415,84 @@ body.dark-theme {
   font-weight: bold;
 }
 
-/* About Container */
-.about-container {
-  max-width: 800px;
-  text-align: center;
+/* Track Record Layout */
+.about-grid-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  margin-bottom: 48px;
+}
+
+.about-main-text {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .about-lead {
   font-family: var(--font-heading);
-  font-size: 1.3rem;
+  font-size: 1.25rem;
   color: #ffffff;
-  margin-bottom: 20px;
+  line-height: 1.5;
 }
 
-.about-content p {
-  font-size: 1.05rem;
+.about-main-text p {
   color: var(--text-muted);
-  margin-bottom: 16px;
+  font-size: 1rem;
+}
+
+.proven-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.proven-card {
+  background: var(--bg-main);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+
+.proven-stat {
+  font-family: var(--font-heading);
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--accent-purple);
+  margin-bottom: 4px;
+}
+
+.proven-card h4 {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  color: #ffffff;
+  margin-bottom: 8px;
+}
+
+.proven-card p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Experience Strip */
+.experience-strip {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-top: 32px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.exp-badge {
+  background: var(--bg-main);
+  border: 1px solid var(--border-subtle);
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
 /* Triage Box / Form */
@@ -517,6 +578,12 @@ body.dark-theme {
   gap: 20px;
 }
 
+@media (max-width: 900px) {
+  .about-grid-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 768px) {
   .hero-title {
     font-size: 2.2rem;
@@ -530,5 +597,8 @@ body.dark-theme {
   }
   .metric-divider {
     display: none;
+  }
+  .proven-grid {
+    grid-template-columns: 1fr;
   }
 }
