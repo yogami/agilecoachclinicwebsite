@@ -224,14 +224,14 @@
     </div>
   </section>
 
-  <!-- Intake / Triage Modal / Form Section -->
+  <!-- Intake & Automated Calendar Booking Section -->
   <section id="triage" class="section">
     <div class="container">
       <div class="triage-box">
         <div class="section-header">
-          <div class="section-tag">Get Started</div>
-          <h2>Book Your Confidential Strategy Session</h2>
-          <p>Submit your details for a quick 1-on-1 intake.</p>
+          <div class="section-tag">Direct Intake & Calendar Booking</div>
+          <h2>Schedule Your Confidential Strategy Session</h2>
+          <p>Submit your details to trigger an instant email alert and open your calendar booking slot.</p>
         </div>
 
         <form class="triage-form" id="intakeForm" onsubmit="handleFormSubmit(event)">
@@ -260,11 +260,13 @@
             <textarea id="challenge" rows="4" placeholder="Briefly describe the political friction, management pushback, or team blocker you are facing..."></textarea>
           </div>
 
-          <button type="submit" class="btn btn-primary btn-glow btn-full btn-lg">Request Strategy Call</button>
+          <button type="submit" id="submitBtn" class="btn btn-primary btn-glow btn-full btn-lg">Submit & Pick Calendar Time Slot</button>
         </form>
 
         <div id="formSuccess" class="form-success hidden">
-          ✓ Request received. Yami will reach out via email within 24 hours to schedule your call.
+          <h3>✓ Request Captured & Email Alert Sent!</h3>
+          <p style="margin: 12px 0 20px; font-weight: normal;">Yami has been notified. Click below to select your preferred open time slot directly on Google Calendar:</p>
+          <a id="calendlyRedirectBtn" href="#" target="_blank" rel="noopener" class="btn btn-primary btn-glow btn-lg">Open Calendar Booking Window →</a>
         </div>
       </div>
     </div>
@@ -294,17 +296,41 @@
       }
     }
 
-    function handleFormSubmit(e) {
+    async function handleFormSubmit(e) {
       e.preventDefault();
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.innerText = 'Processing & Alerting...';
+      submitBtn.disabled = true;
+
       const name = document.getElementById('name').value;
       const email = document.getElementById('email').value;
       const role = document.getElementById('role').value;
       const challenge = document.getElementById('challenge').value;
 
-      console.log('Intake Lead Captured:', { name, email, role, challenge, timestamp: new Date().toISOString() });
+      try {
+        const response = await fetch('/api/triage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, role, challenge })
+        });
 
-      document.getElementById('intakeForm').classList.add('hidden');
-      document.getElementById('formSuccess').classList.remove('hidden');
+        const data = await response.json();
+        
+        document.getElementById('intakeForm').classList.add('hidden');
+        const successBox = document.getElementById('formSuccess');
+        successBox.classList.remove('hidden');
+        
+        const bookingUrl = data.redirectUrl || `https://calendly.com/gopal-yami/coach-clinic-strategy-session?name=${encodeURIComponent(name)}&email=${encodeURIComponent(email)}`;
+        document.getElementById('calendlyRedirectBtn').href = bookingUrl;
+        
+        // Auto-open calendar window
+        window.open(bookingUrl, '_blank');
+      } catch (err) {
+        console.error('Submission error:', err);
+        submitBtn.innerText = 'Submit & Pick Calendar Time Slot';
+        submitBtn.disabled = false;
+        alert('There was a temporary issue submitting your request. Please email gopal.yami@gmail.com directly.');
+      }
     }
   </script>
 

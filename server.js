@@ -3,9 +3,13 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 3000;
+const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || 'gopal.yami@gmail.com';
+const CALENDLY_URL = process.env.CALENDLY_URL || 'https://calendly.com/gopal-yami/coach-clinic-strategy-session';
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 
-// In-memory visitor analytics log (Server-side ICP discovery log)
+// In-memory visitor analytics & lead log
 const visitorLogs = [];
+const capturedLeads = [];
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=UTF-8',
@@ -18,6 +22,49 @@ const MIME_TYPES = {
   '.json': 'application/json'
 };
 
+// Helper: Send email notification via Resend API if API key exists
+async function sendNotificationEmail(lead) {
+  if (!RESEND_API_KEY) {
+    console.log(`[EMAIL ALERT SIMULATION] New Lead from ${lead.name} (${lead.email}). Set RESEND_API_KEY on Railway to enable real-time inbox delivery.`);
+    return;
+  }
+
+  try {
+    const payload = JSON.stringify({
+      from: 'Coach Clinic <notifications@yamigopal.com>',
+      to: [NOTIFY_EMAIL],
+      subject: `🚨 New Coach Clinic Lead: ${lead.name} (${lead.role})`,
+      html: `
+        <h2>New Coach Clinic Triage Request</h2>
+        <p><strong>Name:</strong> ${lead.name}</p>
+        <p><strong>Email:</strong> <a href="mailto:${lead.email}">${lead.email}</a></p>
+        <p><strong>Role:</strong> ${lead.role}</p>
+        <p><strong>Challenge:</strong></p>
+        <blockquote style="background: #f4f4f5; padding: 12px; border-left: 4px solid #8b5cf6;">${lead.challenge}</blockquote>
+        <p><strong>Time:</strong> ${lead.timestamp}</p>
+        <p><strong>IP Address:</strong> ${lead.ip}</p>
+      `
+    });
+
+    const req = http.request({
+      hostname: 'api.resend.com',
+      port: 443,
+      path: '/emails',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Content-Length': Buffer.byteLength(payload)
+      }
+    });
+
+    req.write(payload);
+    req.end();
+  } catch (err) {
+    console.error('Failed to send email notification:', err);
+  }
+}
+
 const server = http.createServer((req, res) => {
   const host = req.headers['host'] || 'unknown';
   const userAgent = req.headers['user-agent'] || 'unknown';
@@ -26,7 +73,7 @@ const server = http.createServer((req, res) => {
   const parsedUrl = new URL(req.url, `http://${host}`);
   const pathname = parsedUrl.pathname;
 
-  // Server-Side Visitor Event Logging (Bypasses Ad-Blockers & Parameter Stripping)
+  // Server-Side Visitor Event Logging
   const eventData = {
     timestamp: new Date().toISOString(),
     domain: host,
@@ -37,21 +84,57 @@ const server = http.createServer((req, res) => {
     query: Object.fromEntries(parsedUrl.searchParams)
   };
 
-  // Skip asset logging to keep analytics clean
   if (!pathname.match(/\.(css|js|png|jpg|svg|ico)$/)) {
     visitorLogs.push(eventData);
-    if (visitorLogs.length > 500) visitorLogs.shift(); // Keep latest 500 entries
-    console.log(`[VISITOR LOG] ${eventData.timestamp} | Host: ${host} | Path: ${pathname} | IP: ${eventData.ip} | Ref: ${referrer}`);
+    if (visitorLogs.length > 500) visitorLogs.shift();
   }
 
-  // Internal Analytics Endpoint (Protected / Debug view)
-  if (pathname === '/api/analytics') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ totalVisits: visitorLogs.length, recentVisitors: visitorLogs.slice(-50) }, null, 2));
+  // Handle Form Triage Submission (POST /api/triage)
+  if (pathname === '/api/triage' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('end', async () => {
+      try {
+        const lead = JSON.parse(body);
+        lead.timestamp = new Date().toISOString();
+        lead.ip = clientIp.split(',')[0].trim();
+        
+        capturedLeads.push(lead);
+        console.log('🚨 NEW LEAD CAPTURED:', lead);
+
+        // Send Email Notification
+        await sendNotificationEmail(lead);
+
+        // Pre-fill Calendly redirect URL
+        const redirectUrl = `${CALENDLY_URL}?name=${encodeURIComponent(lead.name)}&email=${encodeURIComponent(lead.email)}`;
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          success: true, 
+          message: 'Triage request received.',
+          redirectUrl: redirectUrl 
+        }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: 'Invalid JSON payload' }));
+      }
+    });
     return;
   }
 
-  // Handle Clean Professional Routing
+  // Internal Analytics & Leads Endpoint
+  if (pathname === '/api/analytics') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      totalVisits: visitorLogs.length, 
+      totalLeads: capturedLeads.length,
+      recentLeads: capturedLeads.slice(-20),
+      recentVisitors: visitorLogs.slice(-50) 
+    }, null, 2));
+    return;
+  }
+
+  // Static File Serving & Clean Path Routing
   let filePath = path.join(__dirname, 'index.html');
   if (pathname !== '/' && pathname !== '/clinic') {
     const potentialPath = path.join(__dirname, pathname);
@@ -60,7 +143,6 @@ const server = http.createServer((req, res) => {
     }
   }
 
-  // Security check to prevent directory traversal
   if (!filePath.startsWith(__dirname)) {
     res.writeHead(403, { 'Content-Type': 'text/plain' });
     res.end('Forbidden');
@@ -82,5 +164,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Professional Coach Clinic server running on port ${PORT}`);
+  console.log(`Coach Clinic server running on port ${PORT}`);
 });
