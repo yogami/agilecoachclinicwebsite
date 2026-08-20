@@ -1,1 +1,1 @@
-web: python3 -m http.server ${PORT:-3000}
+web: node server.js
