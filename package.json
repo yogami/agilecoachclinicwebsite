@@ -1,0 +1,12 @@
+{
+  "name": "agilecoachclinicwebsite",
+  "version": "1.0.0",
+  "description": "Landing page for Yami Gopal's Coach Clinic - Mentorship for Scrum Masters and Agile Coaches",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "Yami Gopal",
+  "license": "MIT"
+}
