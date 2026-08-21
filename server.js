@@ -17,6 +17,8 @@ const MIME_TYPES = {
   '.js': 'application/javascript; charset=UTF-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.json': 'application/json'
@@ -84,7 +86,7 @@ const server = http.createServer((req, res) => {
     query: Object.fromEntries(parsedUrl.searchParams)
   };
 
-  if (!pathname.match(/\.(css|js|png|jpg|svg|ico)$/)) {
+  if (!pathname.match(/\.(css|js|png|jpg|jpeg|webp|svg|ico)$/)) {
     visitorLogs.push(eventData);
     if (visitorLogs.length > 500) visitorLogs.shift();
   }
@@ -158,7 +160,7 @@ const server = http.createServer((req, res) => {
       res.end(`Server Error: ${err.code}`);
     } else {
       res.writeHead(200, { 'Content-Type': contentType });
-      res.end(content, 'utf-8');
+      res.end(content);
     }
   });
 });
