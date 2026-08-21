@@ -337,7 +337,7 @@
         const successBox = document.getElementById('formSuccess');
         successBox.classList.remove('hidden');
         
-        const bookingUrl = data.redirectUrl || `https://calendly.com/gopal-yami/coach-clinic-strategy-session?name=${encodeURIComponent(name)}&email=${encodeURIComponent(email)}`;
+        const bookingUrl = data.redirectUrl || `https://calendly.com/berlin-ai-labs/30min?name=${encodeURIComponent(name)}&email=${encodeURIComponent(email)}`;
         document.getElementById('calendlyRedirectBtn').href = bookingUrl;
         
         // Auto-open calendar window

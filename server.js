@@ -4,7 +4,7 @@ const path = require('path');
 
 const PORT = process.env.PORT || 3000;
 const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || 'gopal.yami@gmail.com';
-const CALENDLY_URL = process.env.CALENDLY_URL || 'https://calendly.com/gopal-yami/coach-clinic-strategy-session';
+const CALENDLY_URL = process.env.CALENDLY_URL || 'https://calendly.com/berlin-ai-labs/30min';
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 
 // In-memory visitor analytics & lead log
