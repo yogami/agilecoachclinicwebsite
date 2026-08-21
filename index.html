@@ -337,11 +337,12 @@
         const successBox = document.getElementById('formSuccess');
         successBox.classList.remove('hidden');
         
-        const bookingUrl = data.redirectUrl || `https://calendly.com/berlin-ai-labs/30min?name=${encodeURIComponent(name)}&email=${encodeURIComponent(email)}`;
-        document.getElementById('calendlyRedirectBtn').href = bookingUrl;
+        // Single-use secure server proxy route (no target URL string exposed in client JS)
+        const bookingProxyUrl = data.redirectUrl || '/book-session';
+        document.getElementById('calendlyRedirectBtn').href = bookingProxyUrl;
         
-        // Auto-open calendar window
-        window.open(bookingUrl, '_blank');
+        // Auto-open server booking gateway window
+        window.open(bookingProxyUrl, '_blank');
       } catch (err) {
         console.error('Submission error:', err);
         submitBtn.innerText = 'Submit & Pick Calendar Time Slot';

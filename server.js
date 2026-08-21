@@ -2,6 +2,7 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { Pool } = require('pg');
 
 const PORT = process.env.PORT || 3000;
@@ -9,6 +10,9 @@ const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || 'gopal.yami@gmail.com';
 const CALENDLY_URL = process.env.CALENDLY_URL || 'https://calendly.com/berlin-ai-labs/30min';
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const DATABASE_URL = process.env.DATABASE_URL || '';
+
+// Single-use ephemeral booking token store
+const ephemeralBookingTokens = new Map();
 
 // Initialize PostgreSQL Pool if DATABASE_URL exists
 let dbPool = null;
@@ -127,9 +131,7 @@ const server = http.createServer((req, res) => {
       dbPool.query(
         `INSERT INTO visitor_logs (host, path, ip, referrer, user_agent) VALUES ($1, $2, $3, $4, $5)`,
         [host, pathname, ip, referrer, userAgent]
-      ).then(() => {
-        console.log(`[DB LOG] Visitor inserted: ${pathname} from IP ${ip}`);
-      }).catch(e => console.error('DB Visitor Log Error:', e.message));
+      ).catch(e => console.error('DB Visitor Log Error:', e.message));
     }
   }
 
@@ -150,22 +152,26 @@ const server = http.createServer((req, res) => {
           await dbPool.query(
             `INSERT INTO leads (name, email, role, challenge, ip) VALUES ($1, $2, $3, $4, $5)`,
             [lead.name, lead.email, lead.role, lead.challenge, lead.ip]
-          ).then(() => {
-            console.log(`[DB LOG] Lead inserted into PostgreSQL: ${lead.name}`);
-          }).catch(e => console.error('DB Lead Log Error:', e.message));
+          ).catch(e => console.error('DB Lead Log Error:', e.message));
         }
 
         // Send Real-Time Email Notification via Resend HTTPS
         await sendNotificationEmail(lead);
 
-        // Pre-fill Calendly redirect URL
-        const redirectUrl = `${CALENDLY_URL}?name=${encodeURIComponent(lead.name)}&email=${encodeURIComponent(lead.email)}`;
+        // Generate Ephemeral Single-Use Token for Server-Side Proxy Redirect
+        const token = crypto.randomBytes(16).toString('hex');
+        ephemeralBookingTokens.set(token, { name: lead.name, email: lead.email, created: Date.now() });
+
+        // Expire tokens older than 15 minutes
+        for (const [t, data] of ephemeralBookingTokens.entries()) {
+          if (Date.now() - data.created > 15 * 60 * 1000) ephemeralBookingTokens.delete(t);
+        }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ 
           success: true, 
           message: 'Triage request received.',
-          redirectUrl: redirectUrl 
+          redirectUrl: `/book-session?t=${token}` 
         }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -175,7 +181,26 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Static File Serving & Clean Path Routing (NOTE: NO public /api/analytics endpoint exists!)
+  // Secure Server-Side Proxy Booking Gateway (GET /book-session?t=TOKEN)
+  if (pathname === '/book-session') {
+    const token = parsedUrl.searchParams.get('t');
+    const tokenData = ephemeralBookingTokens.get(token);
+
+    if (tokenData) {
+      ephemeralBookingTokens.delete(token); // Single-use consumption
+      const destination = `${CALENDLY_URL}?name=${encodeURIComponent(tokenData.name)}&email=${encodeURIComponent(tokenData.email)}`;
+      res.writeHead(302, { 'Location': destination });
+      res.end();
+      return;
+    } else {
+      // Fallback if token missing or consumed
+      res.writeHead(302, { 'Location': CALENDLY_URL });
+      res.end();
+      return;
+    }
+  }
+
+  // Static File Serving & Clean Path Routing
   let filePath = path.join(__dirname, 'index.html');
   if (pathname !== '/' && pathname !== '/clinic') {
     const potentialPath = path.join(__dirname, pathname);
