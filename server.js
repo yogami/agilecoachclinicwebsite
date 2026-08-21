@@ -129,7 +129,9 @@ const server = http.createServer((req, res) => {
       dbPool.query(
         `INSERT INTO visitor_logs (host, path, ip, referrer, user_agent) VALUES ($1, $2, $3, $4, $5)`,
         [host, pathname, ip, referrer, userAgent]
-      ).catch(e => console.error('DB Visitor Log Error:', e.message));
+      ).then(() => {
+        console.log(`[DB LOG] Visitor inserted: ${pathname} from IP ${ip}`);
+      }).catch(e => console.error('DB Visitor Log Error:', e.message));
     }
   }
 
@@ -150,7 +152,9 @@ const server = http.createServer((req, res) => {
           await dbPool.query(
             `INSERT INTO leads (name, email, role, challenge, ip) VALUES ($1, $2, $3, $4, $5)`,
             [lead.name, lead.email, lead.role, lead.challenge, lead.ip]
-          ).catch(e => console.error('DB Lead Log Error:', e.message));
+          ).then(() => {
+            console.log(`[DB LOG] Lead inserted into PostgreSQL: ${lead.name}`);
+          }).catch(e => console.error('DB Lead Log Error:', e.message));
         }
 
         // Send Real-Time Email Notification via Resend
