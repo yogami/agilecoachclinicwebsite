@@ -1,4 +1,5 @@
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
@@ -57,7 +58,7 @@ const MIME_TYPES = {
   '.json': 'application/json'
 };
 
-// Helper: Send email notification via Resend API
+// Helper: Send email notification via Resend API over HTTPS
 async function sendNotificationEmail(lead) {
   if (!RESEND_API_KEY) {
     console.log(`[EMAIL ALERT SIMULATION] New Lead from ${lead.name} (${lead.email}).`);
@@ -83,7 +84,7 @@ async function sendNotificationEmail(lead) {
       `
     });
 
-    const req = http.request({
+    const req = https.request({
       hostname: 'api.resend.com',
       port: 443,
       path: '/emails',
@@ -157,7 +158,7 @@ const server = http.createServer((req, res) => {
           }).catch(e => console.error('DB Lead Log Error:', e.message));
         }
 
-        // Send Real-Time Email Notification via Resend
+        // Send Real-Time Email Notification via Resend HTTPS
         await sendNotificationEmail(lead);
 
         // Pre-fill Calendly redirect URL
