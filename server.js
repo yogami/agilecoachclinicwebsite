@@ -84,10 +84,7 @@ async function sendNotificationEmail(lead) {
       `
     });
 
-    const req = https.request({
-      hostname: 'api.resend.com',
-      port: 443,
-      path: '/emails',
+    const req = https.request('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
