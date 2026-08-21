@@ -24,7 +24,7 @@ const MIME_TYPES = {
   '.json': 'application/json'
 };
 
-// Helper: Send email notification via Resend API if API key exists
+// Helper: Send email notification via Resend API
 async function sendNotificationEmail(lead) {
   if (!RESEND_API_KEY) {
     console.log(`[EMAIL ALERT SIMULATION] New Lead from ${lead.name} (${lead.email}). Set RESEND_API_KEY on Railway to enable real-time inbox delivery.`);
@@ -33,18 +33,20 @@ async function sendNotificationEmail(lead) {
 
   try {
     const payload = JSON.stringify({
-      from: 'Coach Clinic <notifications@yamigopal.com>',
+      from: 'Coach Clinic <onboarding@resend.dev>',
       to: [NOTIFY_EMAIL],
       subject: `🚨 New Coach Clinic Lead: ${lead.name} (${lead.role})`,
       html: `
-        <h2>New Coach Clinic Triage Request</h2>
-        <p><strong>Name:</strong> ${lead.name}</p>
-        <p><strong>Email:</strong> <a href="mailto:${lead.email}">${lead.email}</a></p>
-        <p><strong>Role:</strong> ${lead.role}</p>
-        <p><strong>Challenge:</strong></p>
-        <blockquote style="background: #f4f4f5; padding: 12px; border-left: 4px solid #8b5cf6;">${lead.challenge}</blockquote>
-        <p><strong>Time:</strong> ${lead.timestamp}</p>
-        <p><strong>IP Address:</strong> ${lead.ip}</p>
+        <div style="font-family: sans-serif; padding: 20px; color: #111;">
+          <h2>🚨 New Coach Clinic Triage Request</h2>
+          <p><strong>Name:</strong> ${lead.name}</p>
+          <p><strong>Email:</strong> <a href="mailto:${lead.email}">${lead.email}</a></p>
+          <p><strong>Role:</strong> ${lead.role}</p>
+          <p><strong>Challenge Description:</strong></p>
+          <blockquote style="background: #f4f4f5; padding: 14px; border-left: 4px solid #8b5cf6; font-size: 1.05em;">${lead.challenge}</blockquote>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+          <p style="font-size: 0.85em; color: #666;"><strong>Timestamp:</strong> ${lead.timestamp}<br/><strong>IP Address:</strong> ${lead.ip}</p>
+        </div>
       `
     });
 
@@ -58,6 +60,18 @@ async function sendNotificationEmail(lead) {
         'Authorization': `Bearer ${RESEND_API_KEY}`,
         'Content-Length': Buffer.byteLength(payload)
       }
+    });
+
+    req.on('response', (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        console.log(`[RESEND EMAIL SENT] Status: ${res.statusCode} | Response:`, data);
+      });
+    });
+
+    req.on('error', (err) => {
+      console.error('[RESEND EMAIL ERROR]:', err);
     });
 
     req.write(payload);
@@ -104,7 +118,7 @@ const server = http.createServer((req, res) => {
         capturedLeads.push(lead);
         console.log('🚨 NEW LEAD CAPTURED:', lead);
 
-        // Send Email Notification
+        // Send Real-Time Email Notification via Resend
         await sendNotificationEmail(lead);
 
         // Pre-fill Calendly redirect URL
