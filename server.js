@@ -1,16 +1,48 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { Pool } = require('pg');
 
 const PORT = process.env.PORT || 3000;
 const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || 'gopal.yami@gmail.com';
 const CALENDLY_URL = process.env.CALENDLY_URL || 'https://calendly.com/berlin-ai-labs/30min';
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
-const ANALYTICS_SECRET = process.env.ANALYTICS_SECRET || 'yami_clinic_admin_2026_sec';
+const DATABASE_URL = process.env.DATABASE_URL || '';
 
-// In-memory visitor analytics & lead log
-const visitorLogs = [];
-const capturedLeads = [];
+// Initialize PostgreSQL Pool if DATABASE_URL exists
+let dbPool = null;
+if (DATABASE_URL) {
+  dbPool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: DATABASE_URL.includes('railway.internal') ? false : { rejectUnauthorized: false }
+  });
+
+  // Initialize PostgreSQL tables automatically
+  dbPool.query(`
+    CREATE TABLE IF NOT EXISTS visitor_logs (
+      id SERIAL PRIMARY KEY,
+      timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      host TEXT,
+      path TEXT,
+      ip TEXT,
+      referrer TEXT,
+      user_agent TEXT
+    );
+    CREATE TABLE IF NOT EXISTS leads (
+      id SERIAL PRIMARY KEY,
+      timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      name TEXT,
+      email TEXT,
+      role TEXT,
+      challenge TEXT,
+      ip TEXT
+    );
+  `).then(() => {
+    console.log('✅ PostgreSQL Analytics Tables Initialized on Railway');
+  }).catch(err => {
+    console.error('❌ PostgreSQL Initialization Error:', err);
+  });
+}
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=UTF-8',
@@ -89,21 +121,16 @@ const server = http.createServer((req, res) => {
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
   const parsedUrl = new URL(req.url, `http://${host}`);
   const pathname = parsedUrl.pathname;
+  const ip = clientIp.split(',')[0].trim();
 
-  // Server-Side Visitor Event Logging
-  const eventData = {
-    timestamp: new Date().toISOString(),
-    domain: host,
-    path: pathname,
-    ip: clientIp.split(',')[0].trim(),
-    referrer: referrer,
-    userAgent: userAgent,
-    query: Object.fromEntries(parsedUrl.searchParams)
-  };
-
+  // Server-Side Visitor Event Logging into PostgreSQL
   if (!pathname.match(/\.(css|js|png|jpg|jpeg|webp|svg|ico)$/)) {
-    visitorLogs.push(eventData);
-    if (visitorLogs.length > 500) visitorLogs.shift();
+    if (dbPool) {
+      dbPool.query(
+        `INSERT INTO visitor_logs (host, path, ip, referrer, user_agent) VALUES ($1, $2, $3, $4, $5)`,
+        [host, pathname, ip, referrer, userAgent]
+      ).catch(e => console.error('DB Visitor Log Error:', e.message));
+    }
   }
 
   // Handle Form Triage Submission (POST /api/triage)
@@ -114,10 +141,17 @@ const server = http.createServer((req, res) => {
       try {
         const lead = JSON.parse(body);
         lead.timestamp = new Date().toISOString();
-        lead.ip = clientIp.split(',')[0].trim();
+        lead.ip = ip;
         
-        capturedLeads.push(lead);
         console.log('🚨 NEW LEAD CAPTURED:', lead);
+
+        // Store Lead into PostgreSQL
+        if (dbPool) {
+          await dbPool.query(
+            `INSERT INTO leads (name, email, role, challenge, ip) VALUES ($1, $2, $3, $4, $5)`,
+            [lead.name, lead.email, lead.role, lead.challenge, lead.ip]
+          ).catch(e => console.error('DB Lead Log Error:', e.message));
+        }
 
         // Send Real-Time Email Notification via Resend
         await sendNotificationEmail(lead);
@@ -139,28 +173,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Private Secured Analytics Endpoint (Requires Secret Admin Token)
-  if (pathname === '/api/analytics') {
-    const providedKey = parsedUrl.searchParams.get('key') || req.headers['x-admin-key'];
-    
-    if (!providedKey || providedKey !== ANALYTICS_SECRET) {
-      // Return 404 Not Found to unauthorized visitors to completely hide the endpoint
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('404 Not Found');
-      return;
-    }
-
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ 
-      totalVisits: visitorLogs.length, 
-      totalLeads: capturedLeads.length,
-      recentLeads: capturedLeads.slice(-20),
-      recentVisitors: visitorLogs.slice(-50) 
-    }, null, 2));
-    return;
-  }
-
-  // Static File Serving & Clean Path Routing
+  // Static File Serving & Clean Path Routing (NOTE: NO public /api/analytics endpoint exists!)
   let filePath = path.join(__dirname, 'index.html');
   if (pathname !== '/' && pathname !== '/clinic') {
     const potentialPath = path.join(__dirname, pathname);
