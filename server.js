@@ -6,6 +6,7 @@ const PORT = process.env.PORT || 3000;
 const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || 'gopal.yami@gmail.com';
 const CALENDLY_URL = process.env.CALENDLY_URL || 'https://calendly.com/berlin-ai-labs/30min';
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const ANALYTICS_SECRET = process.env.ANALYTICS_SECRET || 'yami_clinic_admin_2026_sec';
 
 // In-memory visitor analytics & lead log
 const visitorLogs = [];
@@ -27,7 +28,7 @@ const MIME_TYPES = {
 // Helper: Send email notification via Resend API
 async function sendNotificationEmail(lead) {
   if (!RESEND_API_KEY) {
-    console.log(`[EMAIL ALERT SIMULATION] New Lead from ${lead.name} (${lead.email}). Set RESEND_API_KEY on Railway to enable real-time inbox delivery.`);
+    console.log(`[EMAIL ALERT SIMULATION] New Lead from ${lead.name} (${lead.email}).`);
     return;
   }
 
@@ -138,8 +139,17 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Internal Analytics & Leads Endpoint
+  // Private Secured Analytics Endpoint (Requires Secret Admin Token)
   if (pathname === '/api/analytics') {
+    const providedKey = parsedUrl.searchParams.get('key') || req.headers['x-admin-key'];
+    
+    if (!providedKey || providedKey !== ANALYTICS_SECRET) {
+      // Return 404 Not Found to unauthorized visitors to completely hide the endpoint
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('404 Not Found');
+      return;
+    }
+
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ 
       totalVisits: visitorLogs.length, 
