@@ -22,7 +22,7 @@ if (DATABASE_URL) {
     ssl: DATABASE_URL.includes('railway.internal') ? false : { rejectUnauthorized: false }
   });
 
-  // Initialize PostgreSQL tables automatically
+  // Initialize PostgreSQL tables & B2B Firmographic columns automatically
   dbPool.query(`
     CREATE TABLE IF NOT EXISTS visitor_logs (
       id SERIAL PRIMARY KEY,
@@ -30,9 +30,18 @@ if (DATABASE_URL) {
       host TEXT,
       path TEXT,
       ip TEXT,
+      company TEXT,
+      city TEXT,
+      country TEXT,
+      org TEXT,
       referrer TEXT,
       user_agent TEXT
     );
+    ALTER TABLE visitor_logs ADD COLUMN IF NOT EXISTS company TEXT;
+    ALTER TABLE visitor_logs ADD COLUMN IF NOT EXISTS city TEXT;
+    ALTER TABLE visitor_logs ADD COLUMN IF NOT EXISTS country TEXT;
+    ALTER TABLE visitor_logs ADD COLUMN IF NOT EXISTS org TEXT;
+
     CREATE TABLE IF NOT EXISTS leads (
       id SERIAL PRIMARY KEY,
       timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -43,9 +52,43 @@ if (DATABASE_URL) {
       ip TEXT
     );
   `).then(() => {
-    console.log('✅ PostgreSQL Analytics Tables Initialized on Railway');
+    console.log('✅ PostgreSQL Analytics & B2B Firmographic Tables Initialized on Railway');
   }).catch(err => {
     console.error('❌ PostgreSQL Initialization Error:', err);
+  });
+}
+
+// B2B Reverse IP Lookup (Firmographics)
+function lookupB2BCompany(ip) {
+  return new Promise((resolve) => {
+    if (!ip || ip === '127.0.0.1' || ip === '::1' || ip.startsWith('10.') || ip.startsWith('192.168.')) {
+      return resolve({ company: 'Internal / Direct', city: 'Local', country: 'Dev', org: 'Localhost' });
+    }
+
+    const apiUrl = `http://ip-api.com/json/${ip}?fields=status,country,city,org,as,isp`;
+    http.get(apiUrl, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          if (data.status === 'success') {
+            resolve({
+              company: data.org || data.isp || 'Individual / Unspecified',
+              city: data.city || 'Unknown',
+              country: data.country || 'Unknown',
+              org: data.as || data.org || data.isp || 'Unknown'
+            });
+          } else {
+            resolve({ company: 'Public IP', city: 'Unknown', country: 'Unknown', org: 'Standard ISP' });
+          }
+        } catch (e) {
+          resolve({ company: 'Unknown', city: 'Unknown', country: 'Unknown', org: 'Unknown' });
+        }
+      });
+    }).on('error', () => {
+      resolve({ company: 'Unknown', city: 'Unknown', country: 'Unknown', org: 'Unknown' });
+    });
   });
 }
 
@@ -116,7 +159,7 @@ async function sendNotificationEmail(lead) {
   }
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const host = req.headers['host'] || 'unknown';
   const userAgent = req.headers['user-agent'] || 'unknown';
   const referrer = req.headers['referer'] || req.headers['referrer'] || 'direct';
@@ -125,13 +168,17 @@ const server = http.createServer((req, res) => {
   const pathname = parsedUrl.pathname;
   const ip = clientIp.split(',')[0].trim();
 
-  // Server-Side Visitor Event Logging into PostgreSQL
+  // Server-Side B2B Visitor Event Logging into PostgreSQL
   if (!pathname.match(/\.(css|js|png|jpg|jpeg|webp|svg|ico)$/)) {
     if (dbPool) {
-      dbPool.query(
-        `INSERT INTO visitor_logs (host, path, ip, referrer, user_agent) VALUES ($1, $2, $3, $4, $5)`,
-        [host, pathname, ip, referrer, userAgent]
-      ).catch(e => console.error('DB Visitor Log Error:', e.message));
+      lookupB2BCompany(ip).then(firmographics => {
+        dbPool.query(
+          `INSERT INTO visitor_logs (host, path, ip, company, city, country, org, referrer, user_agent) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [host, pathname, ip, firmographics.company, firmographics.city, firmographics.country, firmographics.org, referrer, userAgent]
+        ).then(() => {
+          console.log(`[B2B LOG] Visitor from ${firmographics.company} (${firmographics.city}, ${firmographics.country}) on ${pathname}`);
+        }).catch(e => console.error('DB Visitor Log Error:', e.message));
+      });
     }
   }
 
